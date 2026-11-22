@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "self-audit"
+version = "1.0.0"
+description = "Check your own digital footprint: account enumeration, password breach lookup, and an actionable remediation checklist."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "direction-indicator" }]
+keywords = ["osint", "privacy", "self-audit", "digital-footprint", "security"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Security",
+]
+dependencies = []
+
+[project.scripts]
+self-audit = "audit.cli:main"
+
+[tool.setuptools]
+packages = ["audit"]

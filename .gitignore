@@ -1,0 +1,24 @@
+# 上游规则数据，首次运行自动下载，不入库
+wmn-data.json
+
+# 运行产物
+*.html
+!sample-report.html
+*.json
+pw.txt
+passwords.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
