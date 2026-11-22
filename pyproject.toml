@@ -9,7 +9,7 @@ description = "Check your own digital footprint: account enumeration, password b
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
-authors = [{ name = "direction-indicator" }]
+authors = [{ name = "Fang3333" }]
 keywords = ["osint", "privacy", "self-audit", "digital-footprint", "security"]
 classifiers = [
     "Programming Language :: Python :: 3",
