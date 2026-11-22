@@ -7,7 +7,7 @@ import json
 import unicodedata
 from datetime import datetime
 
-from . import playbook
+from . import phone as phone_mod, playbook
 
 
 def _w(s: str) -> int:
@@ -19,13 +19,36 @@ def _pad(s: str, n: int) -> str:
     return s + " " * max(0, n - _w(s))
 
 
-def terminal(scan: dict | None, pwn: list[dict] | None, apis: list[dict] | None) -> str:
+def terminal(scan: dict | None, pwn: list[dict] | None, apis: list[dict] | None,
+             phones: list[dict] | None = None) -> str:
     L = []
     bar = "─" * 66
 
     L.append(bar)
     L.append("  信息暴露面自查")
     L.append(bar)
+
+    if phones:
+        for pr in phones:
+            L.append(f"\n  [手机号]  {pr['phone']}")
+            if not pr["valid"]:
+                L.append("    不是有效的中国大陆手机号")
+                continue
+            rows = [
+                ("运营商", pr["carrier"]),
+                ("号段类型", pr["segment_type"]),
+                ("虚拟运营商", "是" if pr["is_mvno"] else "否"),
+                ("归属地", f"{pr['province'] or '?'} {pr['city'] or ''}".strip()),
+                ("区号", pr["area_code"]),
+                ("号段投放", f"{pr['launch_year']} 年（号龄上限 {pr['number_age_max']} 年）"
+                 if pr["launch_year"] else None),
+                ("号码特征", "、".join(pr["shape"]) if pr["shape"] else None),
+            ]
+            w = max(_w(k) for k, _ in rows)
+            for k, v in rows:
+                L.append(f"    {_pad(k, w)} : {v if v else '—'}")
+            L.append(f"    {'平台自查':<{w - 8}} : 共 {len(phone_mod.PLATFORM_PROBE)} 个平台，"
+                     f"逐条路径见 HTML 报告")
 
     if apis:
         hit = [a for a in apis if a["status"] == "exists"]
@@ -98,8 +121,60 @@ def _risk(r: str) -> str:
     return f'<span class="b {cls}">{_h.escape(r)}</span>'
 
 
+def _phone_block(pr: dict) -> str:
+    """手机号区块：号段属性 + 平台自查路径 + 官方渠道。"""
+    esc = _h.escape
+    if not pr["valid"]:
+        return (f"<h2>手机号档案</h2><p class='sub'>{esc(pr['phone'])} "
+                f"不是有效的中国大陆手机号。</p>")
+
+    attrs = [
+        ("运营商", pr["carrier"]),
+        ("号段类型", pr["segment_type"]),
+        ("虚拟运营商", "是" if pr["is_mvno"] else "否"),
+        ("归属地", f"{pr['province'] or '?'} {pr['city'] or ''}".strip()),
+        ("区号", pr["area_code"]),
+        ("号段投放", f"{pr['launch_year']} 年"),
+        ("号龄上限", f"{pr['number_age_max']} 年" if pr["number_age_max"] else None),
+        ("号码特征", "、".join(pr["shape"]) if pr["shape"] else None),
+        ("数据来源", pr["source"]),
+    ]
+    grid = "".join(
+        f'<div class="kv"><span>{esc(k)}</span><strong>{esc(str(v))}</strong></div>'
+        for k, v in attrs if v
+    )
+
+    official = "".join(
+        f'<div class="official"><h4>{esc(o["name"])}</h4>'
+        f'<p>{esc(o["value"])}</p><pre>{esc(o["how"])}</pre></div>'
+        for o in phone_mod.OFFICIAL
+    )
+
+    probes = "".join(
+        f'<tr><td><strong>{esc(p["name"])}</strong></td>'
+        f'<td class="path">{esc(p["path"])}</td>'
+        f'<td class="verdict">{esc(p["verdict"])}</td></tr>'
+        for p in phone_mod.PLATFORM_PROBE
+    )
+
+    return f"""
+<h2>手机号档案 · {esc(pr['phone'])}</h2>
+<div class="kvgrid">{grid}</div>
+
+<h3 class="sec">官方渠道（准确率 100%，优先用这个）</h3>
+<div class="officials">{official}</div>
+
+<h3 class="sec">各平台注册自查 · 手动，但有确定判定标准</h3>
+<p class="sub">没有公开接口能批量查这个。以下是每个平台的确定路径——
+不用真收验证码，看跳转就能判断。</p>
+<table class="probe"><thead><tr>
+<th style="width:76px">平台</th><th>怎么操作</th><th style="width:38%">怎么判断</th>
+</tr></thead><tbody>{probes}</tbody></table>
+"""
+
+
 def to_html(scan: dict | None, pwn: list[dict] | None, apis: list[dict] | None,
-            path: str | None = None) -> str:
+            path: str | None = None, phones: list[dict] | None = None) -> str:
     esc = _h.escape
     parts = []
 
@@ -117,6 +192,10 @@ def to_html(scan: dict | None, pwn: list[dict] | None, apis: list[dict] | None,
   <div class="kpi{' warn' if pwn_hit else ''}"><span class="n">{pwn_hit}</span><span class="l">个密码已泄露</span></div>
   <div class="kpi"><span class="n">{scan['total'] if scan else 0}</span><span class="l">个站点被扫描</span></div>
 </div>""")
+
+    # 手机号
+    for pr in (phones or []):
+        parts.append(_phone_block(pr))
 
     # A 级
     if apis:
@@ -236,6 +315,23 @@ white-space:nowrap;border:1px solid transparent}}
 .b-ok{{background:#eff6ff;color:var(--ac);border-color:#c7dcfd;font-size:10.5px;margin-right:5px}}
 .b-doubt{{background:#fffbeb;color:var(--mid);border-color:#fde68a;font-size:10.5px;margin-right:5px}}
 .hitlist li{{display:flex;align-items:center;flex-wrap:wrap}}
+.kvgrid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:1px;
+background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:10px 0}}
+.kv{{background:var(--card);padding:11px 14px}}
+.kv span{{display:block;font-size:11.5px;color:var(--mut)}}
+.kv strong{{font-size:13.5px;font-weight:600}}
+h3.sec{{font-size:13px;color:var(--tx);margin:22px 0 8px;font-weight:600}}
+.officials{{display:grid;gap:10px;margin:8px 0}}
+.official{{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--lo);
+border-radius:10px;padding:12px 16px}}
+.official h4{{margin:0 0 4px;font-size:13.5px}}
+.official p{{margin:2px 0 7px;color:#3d4450;font-size:12.5px}}
+.official pre{{margin:0;background:#f7f8fa;border:1px solid var(--line);border-radius:7px;
+padding:8px 11px;font-size:11.5px;white-space:pre-wrap;word-break:break-word;
+font-family:ui-monospace,Consolas,monospace;color:#2a3038;line-height:1.6}}
+table.probe td{{font-size:12.5px;vertical-align:top}}
+table.probe td.path{{color:#3d4450}}
+table.probe td.verdict{{color:var(--mut);font-size:12px}}
 .p-must{{background:#fef2f2;color:var(--hi)}}
 .p-sug{{background:#eff6ff;color:var(--ac)}}
 .p-opt{{background:#f4f5f7;color:var(--mut)}}
@@ -275,9 +371,11 @@ color:var(--mut);font-size:11.5px}}
     return doc
 
 
-def to_json(scan, pwn, apis, path: str | None = None) -> str:
+def to_json(scan, pwn, apis, path: str | None = None,
+            phones: list[dict] | None = None) -> str:
     payload = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "phones": phones or [],
         "apis": apis,
         "username_scan": scan,
         "passwords": pwn,

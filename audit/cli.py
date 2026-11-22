@@ -9,14 +9,16 @@ import argparse
 import os
 import sys
 
-from . import apis, playbook, pwned, report, wmn
+from . import apis, phone as phone_mod, playbook, pwned, report, wmn
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="audit",
-        description="个人信息暴露面自查：账号枚举 + 密码泄露 + 处置清单",
+        description="个人信息暴露面自查：账号枚举 + 手机号档案 + 密码泄露 + 处置清单",
     )
+    ap.add_argument("-n", "--phone", action="append", default=[],
+                    help="手机号，可多次指定。查号段属性并给平台自查路径")
     ap.add_argument("-u", "--username", action="append", default=[],
                     help="要查的用户名，可多次指定")
     ap.add_argument("-p", "--password", action="append", default=[],
@@ -61,13 +63,19 @@ def main(argv: list[str] | None = None) -> int:
         with open(args.password_file, encoding="utf-8") as f:
             passwords += [ln.rstrip("\n") for ln in f if ln.strip()]
 
-    if not args.username and not passwords:
+    if not args.username and not passwords and not args.phone:
         ap.print_help()
         return 1
 
     api_results = []
+    phone_results = []
     scan = None
     pwn_results = None
+
+    # 手机号档案
+    if args.phone:
+        for raw in args.phone:
+            phone_results.append(phone_mod.profile(raw))
 
     # A 级：对所有用户名都查
     if args.username and not args.skip_apis:
@@ -91,14 +99,17 @@ def main(argv: list[str] | None = None) -> int:
         pwn_results = pwned.check_many(passwords)
 
     if not args.quiet:
-        print(report.terminal(scan, pwn_results, api_results if api_results else None))
+        print(report.terminal(scan, pwn_results, api_results if api_results else None,
+                              phone_results if phone_results else None))
 
     if args.html:
-        report.to_html(scan, pwn_results, api_results or None, args.html)
+        report.to_html(scan, pwn_results, api_results or None, args.html,
+                       phone_results if phone_results else None)
         if not args.quiet:
             print(f"\n[报告] {os.path.abspath(args.html)}")
     if args.json:
-        report.to_json(scan, pwn_results, api_results or None, args.json)
+        report.to_json(scan, pwn_results, api_results or None, args.json,
+                       phone_results if phone_results else None)
         if not args.quiet:
             print(f"[JSON] {os.path.abspath(args.json)}")
 
