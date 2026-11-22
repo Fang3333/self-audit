@@ -1,5 +1,9 @@
 # self-audit
 
+![Python](https://img.shields.io/badge/python-3.9%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
+
 **Audit your own digital footprint — not someone else's.**
 
 A zero-dependency Python tool that tells you where your username has accounts, whether your
@@ -47,7 +51,7 @@ $ python -m audit -u your_username --html report.html
 不需要安装。Python 3.9+，只用标准库：
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/Fang3333/self-audit.git
 cd self-audit
 python -m audit --help
 ```
