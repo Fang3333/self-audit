@@ -7,7 +7,7 @@ import json
 import unicodedata
 from datetime import datetime
 
-from . import phone as phone_mod, playbook
+from . import email as email_mod, phone as phone_mod, playbook
 
 
 def _w(s: str) -> int:
@@ -20,7 +20,8 @@ def _pad(s: str, n: int) -> str:
 
 
 def terminal(scan: dict | None, pwn: list[dict] | None, apis: list[dict] | None,
-             phones: list[dict] | None = None) -> str:
+             phones: list[dict] | None = None,
+             emails: list[dict] | None = None) -> str:
     L = []
     bar = "─" * 66
 
@@ -49,6 +50,31 @@ def terminal(scan: dict | None, pwn: list[dict] | None, apis: list[dict] | None,
                 L.append(f"    {_pad(k, w)} : {v if v else '—'}")
             L.append(f"    {'平台自查':<{w - 8}} : 共 {len(phone_mod.PLATFORM_PROBE)} 个平台，"
                      f"逐条路径见 HTML 报告")
+
+    if emails:
+        for em in emails:
+            L.append(f"\n  [邮箱]  {em['email']}")
+            if not em["valid"]:
+                L.append("    格式不合法")
+                continue
+            rows = [
+                ("服务商", em["provider"]),
+                ("类型", em["kind"]),
+                ("域名", em["domain"]),
+                ("MX 记录", f"{len(em['mx_records'])} 条，可收信" if em["mx_ok"] else em["mx_error"]),
+                ("一次性邮箱", "是" if em["is_disposable"] else "否"),
+                ("+ 别名", "已使用" if em["plus_alias"] else None),
+                ("HIBP 查询", em["hibp_url"]),
+            ]
+            w = max(_w(k) for k, _ in rows)
+            for k, v in rows:
+                L.append(f"    {_pad(k, w)} : {v if v else '—'}")
+            if em.get("hits") is not None:
+                hs = em["hits"].get("hits") or []
+                L.append(f"    {'公开提及':<{w - 6}} : {len(hs)} 条"
+                         + ("" if hs else "（未搜到，个人邮箱在公开网页痕迹很少）"))
+                for h in hs[:5]:
+                    L.append(f"        · {h['title'][:56]}")
 
     if apis:
         hit = [a for a in apis if a["status"] == "exists"]
@@ -121,6 +147,78 @@ def _risk(r: str) -> str:
     return f'<span class="b {cls}">{_h.escape(r)}</span>'
 
 
+def _email_block(em: dict) -> str:
+    """邮箱区块：服务商 + MX 验证 + 一次性判定 + HIBP 入口 + 处置建议。"""
+    esc = _h.escape
+    if not em["valid"]:
+        return (f"<h2>邮箱档案</h2><p class='sub'>{esc(em['email'])} "
+                f"格式不合法，检查是否少了 @ 或域名。</p>")
+
+    attrs = [
+        ("邮箱", em["email"]),
+        ("服务商", em["provider"]),
+        ("类型", em["kind"]),
+        ("域名", em["domain"]),
+        ("域名可收信", "是" if em["mx_ok"] else "否"),
+        ("一次性邮箱", "是" if em["is_disposable"] else "否"),
+        ("+ 别名", "已使用" if em["plus_alias"] else "未使用"),
+    ]
+    grid = "".join(
+        f'<div class="kv"><span>{esc(k)}</span><strong>{esc(str(v))}</strong></div>'
+        for k, v in attrs
+    )
+
+    mx_rows = "".join(
+        f'<tr><td class="mono">{r["preference"]}</td><td class="mono">{esc(r["host"])}</td></tr>'
+        for r in em["mx_records"]
+    )
+    mx_html = (f'<table class="mx"><thead><tr><th style="width:90px">优先级</th>'
+               f'<th>邮件服务器</th></tr></thead><tbody>{mx_rows}</tbody></table>'
+               if mx_rows else
+               f'<p class="sub">{esc(em["mx_error"] or "无 MX 记录")}</p>')
+
+    advice = "".join(
+        f'<div class="act"><div class="act-h">'
+        f'<span class="b {"p-must" if a["priority"] == "必做" else "p-sug"}">{esc(a["priority"])}</span>'
+        f'<strong>{esc(a["title"])}</strong></div>'
+        f'<p>{esc(a["detail"])}</p>'
+        f'<pre>{esc(a["how"].format(hibp_url=em["hibp_url"]))}</pre></div>'
+        for a in email_mod.ADVICE
+    )
+
+    hits_html = ""
+    if em.get("hits") is not None:
+        hs = em["hits"].get("hits") or []
+        if hs:
+            lis = "".join(
+                f'<li><a href="{esc(h["url"])}" target="_blank" rel="noreferrer">'
+                f'{esc(h["title"])}</a><p>{esc(h["snippet"][:140])}</p></li>'
+                for h in hs[:15]
+            )
+            hits_html = f"<h3 class='sec'>公开提及 · {len(hs)} 条</h3><ol class='hits'>{lis}</ol>"
+        else:
+            hits_html = ("<h3 class='sec'>公开提及</h3>"
+                         "<p class='sub'>未搜到。个人邮箱在公开网页上痕迹很少，命中 0 属正常。</p>")
+
+    return f"""
+<h2>邮箱档案 · {esc(em["email"])}</h2>
+<div class="kvgrid">{grid}</div>
+
+<h3 class="sec">域名 MX 记录（能不能真收到信）</h3>
+{mx_html}
+
+<h3 class="sec">HIBP 泄露查询</h3>
+<div class="official"><h4>该邮箱是否出现在公开拖库里</h4>
+<p>HIBP 的账号查询需要付费 API key，工具不代查，直接给你链接——
+打开后输入邮箱即可，网页查询免费。</p>
+<pre>{esc(em["hibp_url"])}</pre></div>
+
+<h3 class="sec">处置建议</h3>
+<div class="acts plain">{advice}</div>
+{hits_html}
+"""
+
+
 def _phone_block(pr: dict) -> str:
     """手机号区块：号段属性 + 平台自查路径 + 官方渠道。"""
     esc = _h.escape
@@ -174,7 +272,8 @@ def _phone_block(pr: dict) -> str:
 
 
 def to_html(scan: dict | None, pwn: list[dict] | None, apis: list[dict] | None,
-            path: str | None = None, phones: list[dict] | None = None) -> str:
+            path: str | None = None, phones: list[dict] | None = None,
+            emails: list[dict] | None = None) -> str:
     esc = _h.escape
     parts = []
 
@@ -192,6 +291,10 @@ def to_html(scan: dict | None, pwn: list[dict] | None, apis: list[dict] | None,
   <div class="kpi{' warn' if pwn_hit else ''}"><span class="n">{pwn_hit}</span><span class="l">个密码已泄露</span></div>
   <div class="kpi"><span class="n">{scan['total'] if scan else 0}</span><span class="l">个站点被扫描</span></div>
 </div>""")
+
+    # 邮箱
+    for em in (emails or []):
+        parts.append(_email_block(em))
 
     # 手机号
     for pr in (phones or []):
@@ -332,6 +435,16 @@ font-family:ui-monospace,Consolas,monospace;color:#2a3038;line-height:1.6}}
 table.probe td{{font-size:12.5px;vertical-align:top}}
 table.probe td.path{{color:#3d4450}}
 table.probe td.verdict{{color:var(--mut);font-size:12px}}
+table.mx td{{font-size:12.5px}}
+ol.hits{{background:var(--card);border:1px solid var(--line);border-radius:12px;
+padding:12px 16px 12px 36px;margin:8px 0}}
+ol.hits li{{margin:9px 0}}
+ol.hits a{{color:var(--ac);text-decoration:none;font-weight:500}}
+ol.hits a:hover{{text-decoration:underline}}
+ol.hits p{{margin:2px 0 0;color:var(--mut);font-size:12px}}
+.acts.plain section{{border:0;padding:0;margin:0;background:none}}
+.acts.plain .act{{border-top:1px dashed var(--line);padding:12px 0}}
+.acts.plain .act:first-child{{border-top:0;padding-top:0}}
 .p-must{{background:#fef2f2;color:var(--hi)}}
 .p-sug{{background:#eff6ff;color:var(--ac)}}
 .p-opt{{background:#f4f5f7;color:var(--mut)}}
@@ -372,9 +485,11 @@ color:var(--mut);font-size:11.5px}}
 
 
 def to_json(scan, pwn, apis, path: str | None = None,
-            phones: list[dict] | None = None) -> str:
+            phones: list[dict] | None = None,
+            emails: list[dict] | None = None) -> str:
     payload = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "emails": emails or [],
         "phones": phones or [],
         "apis": apis,
         "username_scan": scan,

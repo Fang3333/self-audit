@@ -9,7 +9,7 @@ import argparse
 import os
 import sys
 
-from . import apis, phone as phone_mod, playbook, pwned, report, wmn
+from . import apis, email as email_mod, phone as phone_mod, playbook, pwned, report, wmn
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -19,6 +19,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("-n", "--phone", action="append", default=[],
                     help="手机号，可多次指定。查号段属性并给平台自查路径")
+    ap.add_argument("-e", "--email", action="append", default=[],
+                    help="邮箱，可多次指定。查服务商、MX、临时邮箱判定")
+    ap.add_argument("--email-search", action="store_true",
+                    help="对邮箱额外跑一次公开网页搜索（较慢）")
     ap.add_argument("-u", "--username", action="append", default=[],
                     help="要查的用户名，可多次指定")
     ap.add_argument("-p", "--password", action="append", default=[],
@@ -63,14 +67,20 @@ def main(argv: list[str] | None = None) -> int:
         with open(args.password_file, encoding="utf-8") as f:
             passwords += [ln.rstrip("\n") for ln in f if ln.strip()]
 
-    if not args.username and not passwords and not args.phone:
+    if not args.username and not passwords and not args.phone and not args.email:
         ap.print_help()
         return 1
 
     api_results = []
     phone_results = []
+    email_results = []
     scan = None
     pwn_results = None
+
+    # 邮箱档案
+    if args.email:
+        for raw in args.email:
+            email_results.append(email_mod.profile(raw, search=args.email_search))
 
     # 手机号档案
     if args.phone:
@@ -100,16 +110,19 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.quiet:
         print(report.terminal(scan, pwn_results, api_results if api_results else None,
-                              phone_results if phone_results else None))
+                              phone_results if phone_results else None,
+                              email_results if email_results else None))
 
     if args.html:
         report.to_html(scan, pwn_results, api_results or None, args.html,
-                       phone_results if phone_results else None)
+                       phone_results if phone_results else None,
+                       email_results if email_results else None)
         if not args.quiet:
             print(f"\n[报告] {os.path.abspath(args.html)}")
     if args.json:
         report.to_json(scan, pwn_results, api_results or None, args.json,
-                       phone_results if phone_results else None)
+                       phone_results if phone_results else None,
+                       email_results if email_results else None)
         if not args.quiet:
             print(f"[JSON] {os.path.abspath(args.json)}")
 

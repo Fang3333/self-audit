@@ -74,11 +74,17 @@ python -m audit --list-cats
 # 手机号：号段属性 + 归属地 + 各平台自查路径
 python -m audit -n 13800138000 --html 报告.html
 
+# 邮箱：服务商、MX 验证、一次性邮箱判定、HIBP 入口
+python -m audit -e you@example.com --html 报告.html
+
+# 邮箱 + 公开网页搜索（较慢）
+python -m audit -e you@example.com --email-search --html 报告.html
+
 # 用户名：A 级确定检测 + B 级 691 站
 python -m audit -u 你的用户名 --html 报告.html
 
 # 三个一起，一次出报告
-python -m audit -n 13800138000 -u 你的用户名 --html 报告.html
+python -m audit -n 13800138000 -e you@example.com -u 你的用户名 --html 报告.html
 
 # 只扫代码托管和社交
 python -m audit -u 你的用户名 --cats coding,social
@@ -139,6 +145,20 @@ python -m audit --update-rules
 
 免费，48 小时内短信回结果。任何爬虫都没这个准。
 
+## 邮箱：能自动查什么
+
+自动能拿：服务商（QQ/163/Gmail/Outlook/iCloud/Proton 等）、是否教育或机构域名、
+域名 MX 记录（判断这个域名是否真能收信）、是否一次性邮箱（30 个常见临时邮箱域名）、
+是否用了 `+` 别名。
+
+**拿不到的**：这个邮箱注册过哪些站。没有公开接口能做到，任何声称能做到的都是数据库拼接。
+
+**HIBP 泄露查询需要付费 API key**（$3.5/月起），工具不代查，只在报告里直接给你查询链接——
+网页查询是免费的。这是刻意的取舍：不想让你为了查自己掏钱，也不想假装能查。
+
+公开提及搜索用必应。个人邮箱在公开网页上痕迹很少，命中 0 是常态，
+能搜到的一般是被写在公开文档、邮件列表归档或代码注释里的。
+
 ## 密码检测原理
 
 用 HaveIBeenPwned 的 k-anonymity 接口，免费、无需 API key：
@@ -171,6 +191,7 @@ gitleaks detect --source . -v
 self-audit/
 ├── audit/
 │   ├── phone.py       手机号：号段解析 + 归属地库（自动下载）+ 平台自查路径
+│   ├── email.py       邮箱：服务商识别 + MX 验证 + 一次性判定 + 公开搜索
 │   ├── apis.py        A 级：GitHub / Gitee / HackerNews / Keybase，API 精确判定
 │   ├── wmn.py         B 级：WhatsMyName 规则扫描 + 二次验证 + 规则自动更新
 │   ├── pwned.py       HIBP k-anonymity + 密码强度评估
